@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decide — spin the wheel</title>
+<meta name="description" content="Can't decide? Type your options, spin the wheel, let fate choose.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎡</text></svg>">
+<style>
+  :root {
+    --bg: #0f1020;
+    --panel: #1a1b33;
+    --text: #f2f2f7;
+    --muted: #9a9bb8;
+    --accent: #ffcc33;
+    --border: #2c2d4f;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f3ee;
+      --panel: #ffffff;
+      --text: #1d1d2b;
+      --muted: #6b6b80;
+      --accent: #e0a100;
+      --border: #e2e0d8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 48px;
+  }
+  h1 { margin: 0 0 4px; font-size: 2.2rem; letter-spacing: -0.02em; }
+  .tagline { margin: 0 0 24px; color: var(--muted); }
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 32px;
+    width: 100%;
+    max-width: 960px;
+    align-items: start;
+  }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+
+  .wheel-wrap { position: relative; width: 100%; max-width: 520px; margin: 0 auto; aspect-ratio: 1; }
+  canvas { width: 100%; height: 100%; display: block; }
+  .pointer {
+    position: absolute; top: 50%; right: -6px; transform: translateY(-50%);
+    width: 0; height: 0;
+    border-top: 18px solid transparent; border-bottom: 18px solid transparent;
+    border-right: 34px solid var(--accent);
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,.4));
+  }
+  .hub {
+    position: absolute; inset: 0; margin: auto; width: 22%; height: 22%;
+    border-radius: 50%; border: none; cursor: pointer;
+    background: var(--panel); color: var(--text);
+    font: 700 1.1rem system-ui, sans-serif; letter-spacing: .05em;
+    box-shadow: 0 0 0 6px var(--accent), 0 6px 20px rgba(0,0,0,.35);
+    transition: transform .15s;
+  }
+  .hub:hover:not(:disabled) { transform: scale(1.06); }
+  .hub:disabled { cursor: default; opacity: .8; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 18px;
+  }
+  .panel h2 { margin: 0 0 10px; font-size: 1rem; }
+  textarea {
+    width: 100%; min-height: 220px; resize: vertical;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; font: 0.95rem/1.5 ui-monospace, Consolas, monospace;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .hint { color: var(--muted); font-size: .82rem; margin: 6px 0 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button.btn {
+    flex: 1; padding: 10px 12px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    font: 600 .9rem system-ui, sans-serif;
+  }
+  button.btn:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #1d1d2b; border-color: var(--accent); }
+  label.toggle { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; font-size: .9rem; cursor: pointer; }
+  .history { margin: 16px 0 0; padding: 0; list-style: none; font-size: .88rem; color: var(--muted); max-height: 140px; overflow: auto; }
+  .history li { padding: 3px 0; border-bottom: 1px dashed var(--border); }
+  .history li:first-child { color: var(--text); font-weight: 600; }
+
+  .result {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(4px);
+    opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  .result.show { opacity: 1; pointer-events: auto; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 20px;
+    padding: 28px 36px; text-align: center; max-width: min(90vw, 480px);
+    transform: scale(.9); transition: transform .25s;
+  }
+  .result.show .card { transform: scale(1); }
+  .card small { color: var(--muted); text-transform: uppercase; letter-spacing: .12em; }
+  .card .winner { font-size: 2.4rem; font-weight: 800; margin: 8px 0 20px; word-break: break-word; }
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: #1d1d2b; padding: 10px 16px; border-radius: 10px;
+    font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  footer { margin-top: 36px; color: var(--muted); font-size: .8rem; }
+  kbd { border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; font-size: .8em; }
+  #confetti { position: fixed; inset: 0; pointer-events: none; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+  <h1>🎡 Decide</h1>
+  <p class="tagline">Can't decide? Let the wheel choose.</p>
+
+  <main>
+    <div class="wheel-wrap">
+      <canvas id="wheel" width="1040" height="1040" aria-label="Decision wheel"></canvas>
+      <div class="pointer" aria-hidden="true"></div>
+      <button class="hub" id="spin" title="Spin (Space)">SPIN</button>
+    </div>
+
+    <section class="panel">
+      <h2>Options</h2>
+      <textarea id="options" spellcheck="false" aria-label="Options, one per line"></textarea>
+      <p class="hint">One per line. Press <kbd>Space</kbd> outside the box to spin.</p>
+      <div class="row">
+        <button class="btn" id="shuffle">Shuffle</button>
+        <button class="btn" id="share">Copy link</button>
+        <button class="btn" id="preset">Random preset</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="eliminate"> Elimination mode (remove the winner)</label>
+      <ul class="history" id="history" aria-label="Spin history"></ul>
+    </section>
+  </main>
+
+  <div class="result" id="result" role="dialog" aria-modal="true" aria-labelledby="winner">
+    <div class="card">
+      <small>The wheel has spoken</small>
+      <div class="winner" id="winner"></div>
+      <div class="row">
+        <button class="btn" id="close">Close</button>
+        <button class="btn primary" id="again">Spin again</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+  <canvas id="confetti"></canvas>
+
+  <footer>No tracking, no servers. Everything stays in your browser.</footer>
+
+<script>
+(() => {
+  const PALETTE = ["#ff6b6b", "#ffa94d", "#ffd43b", "#69db7c", "#38d9a9", "#4dabf7", "#748ffc", "#da77f2", "#f783ac", "#63e6be"];
+  const PRESETS = [
+    ["Pizza", "Sushi", "Tacos", "Burgers", "Ramen", "Salad"],
+    ["Yes", "No", "Maybe", "Ask again tomorrow"],
+    ["Movie night", "Board games", "Go for a walk", "Read a book", "Cook something new"],
+    ["Heads", "Tails"],
+    ["Do it now", "Do it later", "Delegate it", "Drop it"],
+  ];
+  const STORAGE_KEY = "decide.options";
+
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("wheel"), ctx = canvas.getContext("2d");
+  const input = $("options"), spinBtn = $("spin");
+  const resultEl = $("result"), winnerEl = $("winner");
+  const historyEl = $("history"), eliminateEl = $("eliminate");
+
+  let rotation = 0;      // current wheel angle in radians
+  let spinning = false;
+
+  const store = {
+    get() { try { return localStorage.getItem(STORAGE_KEY); } catch { return null; } },
+    set(v) { try { localStorage.setItem(STORAGE_KEY, v); } catch {} },
+  };
+
+  const getOptions = () => input.value.split("\n").map(s => s.trim()).filter(Boolean);
+
+  function loadInitial() {
+    const hash = decodeURIComponent(location.hash.slice(1));
+    if (hash) return hash.split("|").join("\n");
+    return store.get() || PRESETS[0].join("\n");
+  }
+
+  function draw() {
+    const opts = getOptions();
+    const size = canvas.width, r = size / 2 - 10, c = size / 2;
+    ctx.clearRect(0, 0, size, size);
+
+    if (opts.length === 0) {
+      ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--border");
+      ctx.beginPath(); ctx.arc(c, c, r, 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+
+    const slice = (Math.PI * 2) / opts.length;
+    opts.forEach((label, i) => {
+      const start = rotation + i * slice;
+      ctx.beginPath();
+      ctx.moveTo(c, c);
+      ctx.arc(c, c, r, start, start + slice);
+      ctx.closePath();
+      // avoid two identical neighbours when the count wraps around the palette
+      let color = PALETTE[i % PALETTE.length];
+      if (i === opts.length - 1 && i % PALETTE.length === 0 && opts.length > 1) color = PALETTE[1];
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,.15)";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(c, c);
+      ctx.rotate(start + slice / 2);
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#1d1d2b";
+      const fontSize = Math.max(18, Math.min(44, 520 / opts.length));
+      ctx.font = `700 ${fontSize}px system-ui, sans-serif`;
+      let text = label;
+      const maxW = r * 0.68;
+      while (ctx.measureText(text).width > maxW && text.length > 1) text = text.slice(0, -1);
+      if (text !== label) text = text.slice(0, -1) + "…";
+      ctx.fillText(text, r - 28, 0);
+      ctx.restore();
+    });
+  }
+
+  // The pointer sits at angle 0 (3 o'clock). Find which slice is under it.
+  function indexAtPointer(count) {
+    const slice = (Math.PI * 2) / count;
+    const a = ((-rotation) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    return Math.floor(a / slice) % count;
+  }
+
+  function spin() {
+    const opts = getOptions();
+    if (spinning) return;
+    if (opts.length < 2) { toast("Add at least two options"); return; }
+    spinning = true;
+    spinBtn.disabled = true;
+    closeResult();
+
+    const start = rotation;
+    const extra = Math.PI * 2 * (5 + Math.random() * 3) + Math.random() * Math.PI * 2;
+    const duration = 4200 + Math.random() * 1200;
+    const t0 = performance.now();
+    let lastIdx = indexAtPointer(opts.length);
+    const ease = (t) => 1 - Math.pow(1 - t, 4);
+
+    function frame(now) {
+      const t = Math.min(1, (now - t0) / duration);
+      rotation = start + extra * ease(t);
+      draw();
+      const idx = indexAtPointer(opts.length);
+      if (idx !== lastIdx) { tick(); lastIdx = idx; }
+      if (t < 1) requestAnimationFrame(frame);
+      else finish(opts[indexAtPointer(opts.length)]);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function finish(winner) {
+    spinning = false;
+    spinBtn.disabled = false;
+    rotation %= Math.PI * 2;
+    winnerEl.textContent = winner;
+    resultEl.classList.add("show");
+    $("again").focus();
+    addHistory(winner);
+    confetti();
+    if (eliminateEl.checked) {
+      const opts = getOptions();
+      opts.splice(opts.indexOf(winner), 1);
+      input.value = opts.join("\n");
+      onChange();
+    }
+  }
+
+  function closeResult() { resultEl.classList.remove("show"); }
+
+  function addHistory(winner) {
+    const li = document.createElement("li");
+    li.textContent = `${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} — ${winner}`;
+    historyEl.prepend(li);
+    while (historyEl.children.length > 20) historyEl.lastChild.remove();
+  }
+
+  // --- sound: a tiny click synthesised on the fly, no audio files ---
+  let audio;
+  function tick() {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = "triangle";
+      o.frequency.value = 900 + Math.random() * 200;
+      g.gain.setValueAtTime(0.08, audio.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.05);
+      o.connect(g).connect(audio.destination);
+      o.start(); o.stop(audio.currentTime + 0.05);
+    } catch {}
+  }
+
+  // --- confetti ---
+  const cv = $("confetti"), cx = cv.getContext("2d");
+  function confetti() {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    cv.width = innerWidth; cv.height = innerHeight;
+    const parts = Array.from({ length: 160 }, () => ({
+      x: innerWidth / 2, y: innerHeight / 2,
+      vx: (Math.random() - 0.5) * 16, vy: Math.random() * -16 - 4,
+      s: 6 + Math.random() * 6, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4,
+      color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
+    }));
+    const t0 = performance.now();
+    (function step(now) {
+      cx.clearRect(0, 0, cv.width, cv.height);
+      parts.forEach(p => {
+        p.vy += 0.45; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        cx.save(); cx.translate(p.x, p.y); cx.rotate(p.rot);
+        cx.fillStyle = p.color; cx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
+        cx.restore();
+      });
+      if (now - t0 < 2500) requestAnimationFrame(step);
+      else cx.clearRect(0, 0, cv.width, cv.height);
+    })(t0);
+  }
+
+  let toastTimer;
+  function toast(msg) {
+    const el = $("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 1800);
+  }
+
+  function onChange() {
+    store.set(input.value);
+    draw();
+  }
+
+  // --- wire up ---
+  input.value = loadInitial();
+  input.addEventListener("input", onChange);
+  spinBtn.addEventListener("click", spin);
+  $("again").addEventListener("click", spin);
+  $("close").addEventListener("click", closeResult);
+  resultEl.addEventListener("click", (e) => { if (e.target === resultEl) closeResult(); });
+
+  $("shuffle").addEventListener("click", () => {
+    const o = getOptions();
+    for (let i = o.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [o[i], o[j]] = [o[j], o[i]];
+    }
+    input.value = o.join("\n");
+    onChange();
+  });
+
+  $("preset").addEventListener("click", () => {
+    const current = input.value;
+    let next;
+    do { next = PRESETS[Math.floor(Math.random() * PRESETS.length)].join("\n"); } while (next === current);
+    input.value = next;
+    onChange();
+  });
+
+  $("share").addEventListener("click", async () => {
+    const url = `${location.origin}${location.pathname}#${encodeURIComponent(getOptions().join("|"))}`;
+    try { await navigator.clipboard.writeText(url); toast("Link copied!"); }
+    catch { prompt("Copy this link:", url); }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeResult();
+    if (e.code === "Space" && document.activeElement !== input) { e.preventDefault(); spin(); }
+  });
+
+  draw();
+})();
+</script>
+</body>
+</html>
